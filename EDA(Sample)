@@ -1,0 +1,378 @@
+# 2. EDA(탐색적 자료분석)
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns 
+import os
+import warnings
+import numpy as np
+
+# 경로 설정
+os.chdir('Z:/Begas/10. 스마트과제추진WG(코딩)/2. 탐색적 자료 분석/') 
+
+# 데이터 불러오기 
+df = pd.read_csv("DAT/data_mart.csv", encoding = 'euc-kr')
+
+df.head()
+
+# 1) PLOT 그리기
+
+# 그림 그릴 변수 지정 -----------------------------------------
+x_var = df.columns.to_list() # df의 전체 변수명
+
+# X변수 지정
+del_var = ["Col36", "StartTime", "EndTime", "CoilNO", "rowid", "Mkind", "Size", "강종"] # 제외 할 변수명
+x_var = np.setdiff1d(df.columns, del_var).tolist()
+
+print("# X변수 list :", len(x_var) , "개\n", x_var)
+
+# Y변수 지정
+y_var = "Col36"
+
+# 시간기준 변수 지정
+Time = "StartTime"
+
+# 시간 변수를 이용하여 상반기/하반기로 나누기
+df['season'] = pd.to_datetime(df['StartTime']).dt.month # month 추출
+
+df['season'].replace([1, 2, 3, 4, 5, 6], '0', inplace = True) # 값 대체(상반기 : 1~6 -> 0)
+df['season'].replace([7, 8, 9, 10, 11, 12], '1', inplace = True) # 값 대체(하반기 : 7~12 -> 0)
+
+# 데이터 갯수 확인
+df['season'].value_counts()
+
+# 비교 테이블로 확인
+pd.crosstab(pd.to_datetime(df['StartTime']).dt.month, df['season'])
+
+os.makedirs('OUT/Before_전처리/')  #폴더만들기 함수인데, 이미 폴더가 있으면 Error 발생
+
+# 그림 그릴 폴더 생성
+try:
+    os.makedirs('OUT/Before_전처리/')
+except FileExistsError: # 폴더가 이미 존재할 경우, pass
+    pass
+
+# 1-1) Y 그림(예시RSM 모터 전류)
+
+#Box Plot그리기
+df.boxplot(column = y_var)
+
+#density Plot 그리기
+sns.distplot(df[y_var], bins = 100)
+plt.grid(alpha = 0.5)
+
+#Histogram 그리기
+plt.hist(df[y_var], bins = 100)
+plt.ylabel('Hist')
+plt.grid(alpha = 0.5)
+
+#Time Plot 그리기
+plt.plot(df.index, df[y_var], marker = "o")
+plt.xlabel('Time') 
+plt.ylabel(y_var)
+plt.grid(alpha = 0.5)
+
+# 그림 크기 설정
+plt.figure(figsize = (13, 5)) 
+
+# Boxplot
+plt.subplot(1, 2, 1) # 다중 plot 그리기(행, 열, 순서)
+df[[y_var]].boxplot()
+
+# density 
+plt.subplot(3, 2, 2)
+sns.distplot(df[y_var], bins = 100)
+plt.grid(alpha = 0.5)
+
+# histogram
+plt.subplot(3, 2, 4)
+plt.hist(df[y_var], bins = 100)
+plt.ylabel('Hist')
+plt.grid(alpha = 0.5)
+
+# Timeseries
+change_which = df.loc[pd.to_datetime(df['StartTime']).dt.month.diff() == 1].index
+date_text = pd.to_datetime(df.loc[change_which, 'StartTime']).dt.month.to_list()
+
+plt.subplot(3, 2, 6)
+for w in range(len(change_which)):
+    plt.axvline(x = change_which[w], c = 'gray')
+    plt.text(x= change_which[w], y = max(df[y_var]) - 100, s = str(date_text[w]) + "M")
+
+plt.plot(df.index, df[y_var])
+plt.xlabel('Time') 
+plt.ylabel(y_var)
+plt.grid(alpha = 0.5)
+
+
+# 그림저장
+plt.savefig("OUT/Before_전처리/0.Y.png")
+plt.show()
+
+# warnings 숨김/무시
+warnings.filterwarnings(action = 'ignore')
+# reset warnings
+# warnings.filterwarnings(action = 'default')
+
+# 그룹별 desity plot(기준 변수 : season) 
+for group in df['season'].unique():
+    # subset of group
+    subset = df[df['season'] == group]
+
+    # histogram and kernel density curve
+    sns.distplot(subset[y_var], 
+                 hist = True, # histogram
+                 kde = True,  # density curve
+                 bins = 100, 
+                 label = group)
+# setting plot format
+plt.title(y_var + ' Histogram & Density Plot by season')
+plt.xlabel(y_var)
+plt.ylabel('Density')
+plt.legend(title = 'season') # loc = "lower right"
+plt.show()
+
+#시즌별로 Boxplot
+df.boxplot(column = 'Col36', by = 'season', patch_artist = True)
+
+for i in df.season.unique():
+    temp = df.loc[df['season'] == i]
+    plt.plot(temp.index, temp[y_var], marker = "o", label = i)
+plt.xlabel('Time') 
+plt.ylabel(y_var)
+plt.legend(title = 'season')
+plt.grid(alpha = 0.5)
+plt.show()
+
+# 1-2) X 그림(예시 : RollingTime) 
+
+df[['RollingTime', y_var]].corr()
+
+# Corr(상관계수)
+cor_result = round(df[['RollingTime', y_var]].corr().iloc[0, 1], 4)
+print(cor_result)
+
+# X변수 * Y변수 plot
+plt.figure(figsize = (13, 5)) # 그림 크기 설정
+plt.subplot(1, 2, 1)
+sns.regplot('RollingTime', y_var, data = df, line_kws = {'color' : 'red'})
+plt.title('Corr :' + str(cor_result))
+
+# X변수 plot
+plt.subplot(2, 2, 2) # 여러개 그림 함께 그리기(행, 열, 순서)
+for w, d in zip(change_which, date_text):
+    plt.axvline(x = w, c = 'gray')
+    plt.text(w - 100, max(df['RollingTime']) - 10, str(d) + 'm')
+plt.plot(df.index, df['RollingTime'], color = 'tomato')
+plt.xlabel('Time')
+plt.ylabel('RollingTime')
+plt.grid(alpha = 0.5)
+
+# Y변수 plot
+plt.subplot(2, 2, 4) # 여러개 그림 함께 그리기(행, 열, 순서)
+for w, d in zip(change_which, date_text):
+    plt.axvline(x = w, c = 'gray')
+    plt.text(w - 100, max(df[y_var]) - 100, str(d) + 'm')
+plt.plot(df.index, df[y_var])
+plt.xlabel('Time')
+plt.ylabel(y_var)
+plt.grid(alpha = 0.5)
+
+# 그림 저장
+plt.savefig('OUT/Before_전처리/' + str(x_var.index('RollingTime') + 1) + '. RollingTime.png') # 그림저장
+plt.show()
+plt.close() 
+
+# 2) 데이터 전처리
+
+# 필요 없는 변수 제외
+del_var = ["Zone1ISCPress", "IM2OutTemp", "NTMOutTemp", "Mkind", "강종", "Size", "rowid", "IntervalTime", "SpendMin", "RollingPitch"] # 제외 할 변수명
+result_df = df.drop(del_var, axis = 1)
+print(df.shape, '=>',result_df.shape)
+print(result_df.columns)
+
+# 변수 리스트에서도 제외
+x_var = [x for x in x_var if x not in del_var]
+print(len(x_var))
+
+df.apply(lambda x : len(x.unique())) > 1
+
+# 갯수가 1개만있는 변수 제거
+result_df = result_df.loc[:, df.apply(lambda x : len(x.unique())) > 1]
+result_df.shape
+
+# (그림을 통해)변수별 이상범위 제거를 위한 구문 생성
+# Y값 <= 600 & Rolling Time <= 130 & 온도 0인것 제외
+[x for x in result_df.columns if "Temp" in x]
+
+# (그림을 통해)변수별 이상범위 제거를 위한 구문 생성
+remove_text = "(result_df['Col36'] <= 600) & (result_df['RollingTime'] <= 130)"
+
+for col_name in result_df.columns:
+    if ('Temp' in col_name) :
+        text = "(result_df['" + col_name + "']!= 0)"
+        remove_text = remove_text + " & " + text
+        
+print(remove_text)
+
+#문자열
+"result_df = result_df.loc["+ remove_text +"]"
+
+# 변수별 이상범위 제거
+exec("result_df = result_df.loc["+ remove_text +"]") # exec : 문자열 구문 실행 <-> eval : 문자열 식 실행(ex. eval('a + 4'))
+result_df.shape
+
+# 데이터 이상 구간 제거
+result_df = result_df.loc[(result_df['StartTime'] < "2019-08-13 02:26:41") 
+                          | (result_df['StartTime'] > "2019-08-13 07:14:21")]
+result_df.shape
+
+# 데이터 확인
+print("Col 36 최대값 : " , max(result_df.Col36))
+print("RollingTime 최대값 : " , max(result_df.RollingTime))
+print("Temp 최소값 : " , min(result_df.RMInTemp))
+print("Temp 최소값 : " , min(result_df.PFM2OutTemp))
+
+# 3) 전처리 후 EDA
+
+# 그림 그릴 폴더 생성
+try:
+    os.makedirs('OUT/After_전처리/')
+except FileExistsError: # 폴더가 이미 존재할 경우, pass
+    pass
+
+# 3-1) Y 그림(예시RSM 모터 전류)
+
+# 그림 크기 설정
+plt.figure(figsize = (13, 5)) 
+
+# Boxplot
+plt.subplot(1, 2, 1) # 행, 열, 순서
+result_df[[y_var]].boxplot()
+
+# density 
+plt.subplot(3, 2, 2)
+sns.distplot(result_df[y_var], bins = 100, hist = False)
+plt.ylabel("Density")
+
+# histogram
+plt.subplot(3, 2, 4)
+plt.hist(result_df[y_var], bins = 100)
+plt.ylabel('Hist')
+plt.grid(alpha = 0.5)
+
+# Timeseries
+change_which = result_df.loc[pd.to_datetime(result_df['StartTime']).dt.month.diff() == 1].index + 1
+date_text = pd.to_datetime(result_df.loc[change_which, 'StartTime']).dt.month.to_list()
+
+plt.subplot(3, 2, 6)
+for w, d in zip(change_which, date_text):
+    plt.axvline(x = w, c = 'gray')
+    plt.text(w - 200, max(result_df[y_var]) - 20, str(d) + 'm')
+plt.plot(result_df.index, result_df[y_var])
+plt.xlabel('Time') 
+plt.ylabel(y_var)
+plt.grid(alpha = 0.5)
+
+# 그림저장
+plt.savefig("OUT/After_전처리/0.Y.png")  
+
+plt.show()
+
+# 그룹별 desity plot(기준 변수 : season) 
+for group in result_df['season'].unique():
+    # subset of group
+    subset = result_df[result_df['season'] == group]
+
+    # histogram and kernel density curve
+    sns.distplot(subset[y_var], 
+                 hist = True, # histogram
+                 kde = True,  # density curve
+                 bins = 100, 
+                 label = group)
+# setting plot format
+plt.title(y_var + ' Histogram & Density Plot by season')
+plt.xlabel(y_var)
+plt.ylabel('Density')
+plt.legend(title = 'season')
+plt.show()
+
+# 3-2) X 그림(예시 : RollingTime)
+
+# Corr(상관계수)
+cor_result = round(result_df[['RollingTime', y_var]].corr().iloc[0, 1], 4)
+
+# X변수 * Y변수 plot
+plt.figure(figsize = (13, 5)) # 그림 크기 설정
+plt.subplot(1, 2, 1)
+sns.regplot('RollingTime', y_var, data = result_df, line_kws = {'color' : 'red'})
+plt.title('Corr :' + str(cor_result))
+
+# X변수 plot
+plt.subplot(2, 2, 2) # 여러개 그림 함께 그리기(행, 열, 순서)
+for w, d in zip(change_which, date_text):
+    plt.axvline(x = w, c = 'gray')
+    plt.text(w - 100, max(result_df['RollingTime']) - 3, str(d) + 'm')
+plt.plot(result_df.index, result_df['RollingTime'], color = 'tomato')
+plt.xlabel('Time')
+plt.ylabel('RollingTime')
+plt.grid(alpha = 0.5)
+
+# Y변수 plot
+plt.subplot(2, 2, 4) # 여러개 그림 함께 그리기(행, 열, 순서)
+for w, d in zip(change_which, date_text):
+    plt.axvline(x = w, c = 'gray')
+    plt.text(w - 100, max(result_df[y_var]) - 20, str(d) + 'm')
+plt.plot(result_df.index, result_df[y_var])
+plt.xlabel('Time')
+plt.ylabel(y_var)
+plt.grid(alpha = 0.5)
+
+# 그림 저장
+plt.savefig('OUT/After_전처리/' + str(x_var.index('RollingTime') + 1) + '. RollingTime.png') # 그림저장
+plt.show()
+plt.close() 
+
+# 3-3) 전체 그림 한번에 그리기(for문 이용)
+
+warnings.filterwarnings(action = 'ignore')
+
+# X그림 전체 
+for i in x_var:
+    print(x_var.index(i) + 1, "/", len(x_var), "...", end = "\r")
+    
+    cor_result = round(result_df[[i, y_var]].corr().iloc[0, 1], 4)
+    # corr
+    plt.figure(figsize = (13, 5)) # 그림 크기 설정
+    plt.subplot(1, 2, 1)
+    sns.regplot(i, y_var, data = result_df, line_kws = {'color' : 'red'})
+    plt.title('Corr :' + str(cor_result))
+
+    # Timeseries
+    plt.subplot(2, 2, 2) # 행, 열, 순서
+    for w in change_which:
+        plt.axvline(x = w, c = 'gray')
+    plt.plot(result_df.index, result_df[i], color = 'tomato')
+    plt.xlabel('Time')
+    plt.ylabel(i)
+    plt.grid(alpha = 0.5)
+    
+    plt.subplot(2, 2, 4) # 행, 열, 순서
+    for w in change_which:
+        plt.axvline(x = w, c = 'gray')
+    plt.plot(result_df.index, result_df[y_var])
+    plt.xlabel('Time')
+    plt.ylabel(y_var)
+    plt.grid(alpha = 0.5)
+    
+    plt.savefig('OUT/After_전처리/' + str(x_var.index(i) + 1) + ". " + i + ".png") # 그림저장
+    plt.close()
+
+result_df.to_csv("DAT/result.csv", index = False, encoding = 'euc-kr')
+
+
+
+
+
+
+
